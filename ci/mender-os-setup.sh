@@ -11,18 +11,18 @@ export MENDER_VERSION_TAG="mender-3.6.3"
 export MONGODB_ROOT_PASSWORD=$(pwgen 32 1)
 export MONGODB_REPLICA_SET_KEY=$(pwgen 32 1)
 export MINIO_DOMAIN_NAME="artifacts.host.k3d.internal"
+export MINIO_ACCESS_KEY=$(pwgen 32 1)
+export MINIO_SECRET_KEY=$(pwgen 32 1)
 
 function install_minio() {
-#  cat > ${BUILDDIR}/minio-operator.yml <<EOF
-#tenants: {}
-#EOF
+  cat > ${BUILDDIR}/minio-operator.yml <<EOF
+tenants: {}
+EOF
 
   source ${BUILDDIR}/build_envs
 
   helm install minio-operator minio/minio-operator --version 4.1.7 -f ${BUILDDIR}/minio-operator.yml --wait
 
-  export MINIO_ACCESS_KEY=$(pwgen 32 1)
-  export MINIO_SECRET_KEY=$(pwgen 32 1)
 
   cat <<EOF | kubectl apply -f -
 apiVersion: v1
@@ -138,12 +138,12 @@ api_gateway:
 device_auth:
   certs:
     key: |-
-$(cat device_auth.key | sed -e 's/^/      /g')
+$(cat ${BUILDDIR}/device_auth.key | sed -e 's/^/      /g')
 
 useradm:
   certs:
     key: |-
-$(cat useradm.key | sed -e 's/^/      /g')
+$(cat ${BUILDDIR}/useradm.key | sed -e 's/^/      /g')
 
 ingress:
   enabled: true
@@ -168,7 +168,13 @@ EOF
 
 function mender_os_upgrade() {
   source ${BUILDDIR}/build_envs
-  helm upgrade --install mender mender/mender -f ${BUILDDIR}/mender-3.6.3.yml --wait
+  helm upgrade --debug --install mender mender/mender -f ${BUILDDIR}/mender-3.6.3.yml --wait
+
+  until kubectl get deploy mender-deployments -o go-template='{{.status.availableReplicas}}' | grep -v -e '<no value>'; do 
+    sleep 1s
+    kubectl get pods,ing
+  done
+  
 }
 
 function setup_certmanager() {
@@ -233,5 +239,8 @@ case $1 in
     mender_os_gen_keys
     mender_os_values_init
     mender_os_upgrade
+  "*"_
+    echo "ERROR - step missing - usage: mender-os-setup.sh <step>"
+    exit 1
 esac
 

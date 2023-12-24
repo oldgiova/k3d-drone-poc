@@ -11,7 +11,6 @@ platform:
 steps:
 
   - name: cluster_setup
-    #image: bitnami/kubectl:1.22.2
     image: toolbox:local
     user: root
     commands:
@@ -33,6 +32,16 @@ steps:
     depends_on:
       - cluster_setup
 
+  - name: mender_setup
+    image: toolbox:local
+    user: root
+    commands:
+      - ./ci/mender-os-setup.sh mender
+    depends_on:
+      - cluster_setup
+      - certmanager_setup
+      - minio_setup
+
 services:
   - name: k3dsvc
     image: rancher/k3d:5.0.0-rc.4-dind
@@ -45,5 +54,6 @@ services:
       - until kubectl get deployment coredns -n kube-system -o go-template='{{.status.availableReplicas}}' | grep -v -e '<no value>'; do sleep 1s; done # wait for coredns to be up and running
       - echo "BUILDDIR = $${BUILDDIR}"
       - k3d kubeconfig get drone > $${BUILDDIR}/kubeconfig-$${DRONE_BUILD_STARTED}.yaml
+      - chmod 600 $${BUILDDIR}/kubeconfig-$${DRONE_BUILD_STARTED}.yaml
       - printf "@@@@@@@@@@@@@@@@@@@@@@@\n@@@@ k3d is ready! @@@@\n@@@@@@@@@@@@@@@@@@@@@@@\n"
       - tail -f /dev/null # chill around while the steps do their work
