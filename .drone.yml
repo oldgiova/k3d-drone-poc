@@ -1,0 +1,49 @@
+---
+
+kind: pipeline
+type: docker
+name: main
+
+platform:
+  os: linux
+  arch: amd64
+
+steps:
+
+  - name: cluster_setup
+    #image: bitnami/kubectl:1.22.2
+    image: toolbox:local
+    user: root
+    commands:
+      - ./ci/mender-os-setup.sh cluster
+
+  - name: certmanager_setup
+    image: toolbox:local
+    user: root
+    commands:
+      - ./ci/mender-os-setup.sh certmanager
+    depends_on:
+      - cluster_setup
+
+  - name: minio_setup
+    image: toolbox:local
+    user: root
+    commands:
+      - ./ci/mender-os-setup.sh minio
+    depends_on:
+      - cluster_setup
+
+services:
+  - name: k3dsvc
+    image: rancher/k3d:5.0.0-rc.4-dind
+    privileged: true    
+    commands:
+      - source .build_info
+      - nohup dockerd-entrypoint.sh & # start docker in the background
+      - until docker ps 2>&1 > /dev/null; do sleep 1s; done # wait for docker to be ready before proceeding
+      - k3d cluster create --config ci/k3d-drone.yaml --api-port k3dsvc:6445 # create k3d cluster from config file
+      - until kubectl get deployment coredns -n kube-system -o go-template='{{.status.availableReplicas}}' | grep -v -e '<no value>'; do sleep 1s; done # wait for coredns to be up and running
+      - echo "BUILDDIR = $${BUILDDIR}"
+      - k3d kubeconfig get drone > $${BUILDDIR}/kubeconfig-$${DRONE_BUILD_STARTED}.yaml
+      - printf "@@@@@@@@@@@@@@@@@@@@@@@\n@@@@ k3d is ready! @@@@\n@@@@@@@@@@@@@@@@@@@@@@@\n"
+      - tail -f /dev/null # chill around while the steps do their work
