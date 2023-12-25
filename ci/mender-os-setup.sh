@@ -215,11 +215,18 @@ function cluster_setup() {
   kubectl get pods
 }
 
+function wait_for_kubernetes() {
+  source .build_info
+  export KUBECONFIG=${BUILDDIR}/kubeconfig-${DRONE_BUILD_STARTED}.yaml
+  until kubectl get deployment coredns -n kube-system -o go-template='{{.status.availableReplicas}}' | grep -v -e '<no value>'; do sleep 1s; done # wait for coredns to be up and running
+}
+
 
 helm_init
 
 case $1 in
   "cluster")
+    wait_for_kubernetes
     cluster_setup
     ;;
   "minio")

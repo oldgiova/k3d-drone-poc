@@ -43,17 +43,34 @@ steps:
       - minio_setup
 
 services:
-  - name: k3dsvc
-    image: rancher/k3d:5.0.0-rc.4-dind
+  #- name: k3dsvc
+  - name: k3ssvc
+    #image: rancher/k3d:5.3.0-dind
+    #image: k3s:local
+    image: rancher/k3s:v1.24.10-k3s1
+    #image: docker:dind
     privileged: true    
     commands:
-      - source .build_info
-      - nohup dockerd-entrypoint.sh & # start docker in the background
-      - until docker ps 2>&1 > /dev/null; do sleep 1s; done # wait for docker to be ready before proceeding
-      - k3d cluster create --config ci/k3d-drone.yaml --api-port k3dsvc:6445 # create k3d cluster from config file
-      - until kubectl get deployment coredns -n kube-system -o go-template='{{.status.availableReplicas}}' | grep -v -e '<no value>'; do sleep 1s; done # wait for coredns to be up and running
-      - echo "BUILDDIR = $${BUILDDIR}"
-      - k3d kubeconfig get drone > $${BUILDDIR}/kubeconfig-$${DRONE_BUILD_STARTED}.yaml
-      - chmod 600 $${BUILDDIR}/kubeconfig-$${DRONE_BUILD_STARTED}.yaml
-      - printf "@@@@@@@@@@@@@@@@@@@@@@@\n@@@@ k3d is ready! @@@@\n@@@@@@@@@@@@@@@@@@@@@@@\n"
+      - source ./.build_info 
+      - k3s/entrypoint-cgroup2.sh
+        #- k3s server c --write-kubeconfig /drone/src/$${BUILDDIR}/kubeconfig-$${DRONE_BUILD_STARTED}.yaml &
+      - nohup k3s server &
+      - until ls /etc/rancher/k3s/k3s.yaml; do sleep 2s; done
+      - sed 's/127.0.0.1/k3ssvc/g' /etc/rancher/k3s/k3s.yaml > /drone/src/$${BUILDDIR}/kubeconfig-$${DRONE_BUILD_STARTED}.yaml
+        #- k3s server &
+      #      - k3s server & # start k3s
+      #      - ls -la
+      #      - source ./.build_info
+      #        #  - docker ps
+      #        #  - docker version
+      #      #- nohup dockerd-entrypoint.sh & # start docker in the background
+      #        #- until docker ps 2>&1 > /dev/null; do sleep 1s; done # wait for docker to be ready before proceeding
+      #        #- k3d cluster create --config ci/k3d-drone.yaml --api-port k3dsvc:6445 # create k3d cluster from config file
+      #      - until kubectl get deployment coredns -n kube-system -o go-template='{{.status.availableReplicas}}' | grep -v -e '<no value>'; do sleep 1s; done # wait for coredns to be up and running
+      #      - cp /etc/rancher/k3s/k3s.yaml $${BUILDDIR}/kubeconfig-$${DRONE_BUILD_STARTED}.yaml
+      - chmod 600 /drone/src/$${BUILDDIR}/kubeconfig-$${DRONE_BUILD_STARTED}.yaml
+      #        #- echo "BUILDDIR = $${BUILDDIR}"
+      #        #  #- k3d kubeconfig get drone > $${BUILDDIR}/kubeconfig-$${DRONE_BUILD_STARTED}.yaml
+      #        #- cp /etc/rancher/k3s/k3s.yaml $${BUILDDIR}/kubeconfig-$${DRONE_BUILD_STARTED}.yaml
+      #        #- chmod 600 $${BUILDDIR}/kubeconfig-$${DRONE_BUILD_STARTED}.yaml
       - tail -f /dev/null # chill around while the steps do their work
